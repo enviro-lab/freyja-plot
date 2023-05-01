@@ -77,8 +77,4 @@ Here's an example plot from a batch comparison with summarized=True.
 
 ![batch_comparison_example.png](example/example_images/batch_comparison_example.png?raw=true "Batch comparison of samples using summarized lineage abundances - png")
 
-Here's an example plot from a batch comparison with summarized=True, as html.
-
-![batch_comparison_example.html](example/example_images/batch_comparison_example.html?raw=true "Batch comparison of samples using summarized lineage abundances - html")
-
-Did you notice how some samples are missing labels in the example plots when presented as .png files? If the html version of the plot is zoomed in or wide enough (or you have fewer samples per plot), that problem is resolved.
+Did you notice how some samples are missing labels in the example plots when presented as .png files? If you zoom in or expand the html version of the plot enough (or you have fewer samples per plot), missing names should appear.
