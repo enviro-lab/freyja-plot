@@ -71,8 +71,8 @@ plotter.plotLineages(superlineage=2,fn="superlineage_abundance_example.html")
 #### Example plots
 Here's an example plot from a single batch.
 
-[single-batch-plot](example\example_images\superlineage_example.png?raw=true "Lineage abundance plot with superlineage=2")
+![single-batch-plot](example/example_images/superlineage_example.png?raw=true "Lineage abundance plot with superlineage=2")
 
 Here's an example plot from a batch comparison with summarized=True.
 
-[batch-comparison-plot-summarized](example\example_images\batch_comparison_example.png?raw=true "Batch comparison of samples using summarized lineage abundances")
+![batch-comparison-plot-summarized](example/example_images/batch_comparison_example.png?raw=true "Batch comparison of samples using summarized lineage abundances")
