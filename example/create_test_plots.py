@@ -19,5 +19,4 @@ comp_plotter = FreyjaPlotter({
 })
 print("plotter details:\n",comp_plotter)
 comp_plotter.plotLineages(summarized=True,fn=image_dir/"batch_comparison_example.png")
-comp_plotter.plotLineages(fn="example/example_images/batch_comparison_selection_example.png",samples=["WK104-3955","WK104-3956","WK104-3957","WK104-3958","WK104-3959","WK104-3960","WK104-3961","WK104-3962"])
 comp_plotter.plotLineages(fn=image_dir/"batch_comparison_example.png",samples=["WK104-3955","WK104-3956","WK104-3957","WK104-3958","WK104-3959","WK104-3960","WK104-3961","WK104-3962"])
