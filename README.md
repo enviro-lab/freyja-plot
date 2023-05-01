@@ -1,6 +1,8 @@
 # freyja-plot
 Plotting lineage abundance for individual samples from aggregated freyja demix results
 
+![Example Lineage Abundance Plot](example/example_images/batch_comparison_selection_example.png "These samples had some issues on plate1 or else the 'plate1' and 'plate2' versions of each sample would look more similar.")
+
 ## Installation:
 ```console
 pip install freyja-plot
@@ -78,3 +80,30 @@ Here's an example plot from a batch comparison with summarized=True.
 ![batch_comparison_example.png](example/example_images/batch_comparison_example.png?raw=true "Batch comparison of samples using summarized lineage abundances - png")
 
 Did you notice how some samples are missing labels in the example plots when presented as .png files? If you zoom in or expand the html version of the plot enough (or you have fewer samples per plot), missing names should appear.
+
+## Testing
+If you run the script [create_test_plots.py](example\create_test_plots.py), some test png/html files will be produced in a new directory `./example/test_images`. They should look like the images above in this tutorial.
+
+## Additional functionality
+To see what else you can do, use python's `help()` function. Here's a useful excerpt from the portion that's most useful.
+```python
+>>> import freyja_plot
+>>> help(freyja_plot.FreyjaPlotter)
+...
+plotLineages(self, 
+    summarized=False, superlineage=None, minimum=0.05, 
+    fn=None, title='Freyja lineage prevalence', samples='all', 
+    include_pattern=None, exclude_pattern=None)
+Returns plot of stacked bars showing lineage abundances for each sample
+
+Args:
+    `summarized` (bool): whether to use summarized lineages or all, defaults to False
+    `superlineage` (int|None): number of superlineages to consider, ignored if not provided, 0 is the base lineage, defaults to None
+    `minimum` (float): minimum abundance value to include in plot - anything less is categorized in "Other", defualts to 0.05
+    `fn` (str|Path): where to write fig, if provided, defaults to None
+    `title` (str): plot title, defualts to "Freyja lineage prevalence"
+    `samples` (list|"all"): only the listed samples will be plotted
+    `include_pattern` (str): samples to include like "sample1|sample2"
+    `exclude_pattern` (str): samples to exclude like "sample1|sample2"
+...
+```
