@@ -5,7 +5,10 @@ description = "Plotting lineage abundance for individual samples from aggregated
 authors = ["Sam Kunkleman <skunklem@uncc.edu>"]
 license = "MIT"
 readme = "README.md"
-packages = [{include = "freyja_plot"}]
+packages = [
+    {include = "freyja_plot"},
+    {include = "example"}
+]
 repository = "https://github.com/enviro-lab/freyja-plot.git"
 keywords = ["freyja","plot","lineage","abundance","covid"]
 
