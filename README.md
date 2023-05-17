@@ -65,9 +65,14 @@ plotter.plotLineages(summarized=True,fn="summarized_lineage_abundance_example.ht
 To view higher level lineage assignments with the non-summarized freyja output, the `superlineage` flag can be used. The base `superlineage` is demarked level 0. Each next sublineage (to the next ".") can be attained by adding 1 for each sublineage desired. 'BA.5.1' with a requested sublineage of 0 would return 'BA.*', as would a sample with the lineage 'BA'. For less specific lineages, if the `superlineage` level gets to high, the most specific lineage possible will be returned. 'BA.5.1' with a requested sublineage of 5 would still only return 'BA.5.1'.
 ```python
 # plotting superlineage, level 0: e.g. BA.* ()
-plotter.plotLineages(superlineage=0,fn="superlineage_abundance_example.html")
+fig1 = plotter.plotLineages(superlineage=0,fn="superlineage_abundance_example.html")
 # plotting superlineage, level 2: e.g. BA.5.1.* ()
-plotter.plotLineages(superlineage=2,fn="superlineage_abundance_example.html")
+fig2 = plotter.plotLineages(superlineage=2,fn="superlineage_abundance_example.html")
+```
+
+To stack multiple lineage plots
+```python
+plotter.plotLineages([fig1,fig2],["Fig 1 Title","Fig 2 Title"],fn="combined_plots_example.html")
 ```
 
 #### Example plots
