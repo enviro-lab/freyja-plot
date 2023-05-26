@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "freyja-plot"
-version = "0.2.0"
+version = "0.3.0"
 description = "Plotting lineage abundance for individual samples from aggregated freyja demix results"
 authors = ["Sam Kunkleman <skunklem@uncc.edu>"]
 license = "MIT"
@@ -17,6 +17,7 @@ python = "^3.8"
 pandas = "^2.0.1"
 plotly = "^5.14.1"
 kaleido = "0.1.0"
+pyyaml = ">=5.1"
 
 [tool.poetry.scripts]
 freyja_plot = 'freyja_plot.main:main'

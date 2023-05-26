@@ -10,3 +10,6 @@ def main():
     """))
     parser.add_argument('-V', '--version', action='version', version="%(prog)s ("+__version__+")")
     parser.parse_args()
+
+if __name__ == "__main__":
+    main()
