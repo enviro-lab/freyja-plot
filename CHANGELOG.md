@@ -5,7 +5,8 @@ Maybe incorporate aliases into superlineage/sublineage detection. See https://gi
 
 ## v0.4.0
 ### Added
-* can now plot lineages with date values on the x-axis
+* can now plot lineage proportions over vs time
+* can now stack subplots, one for each scheme (with shared x-axis)
 
 ## v0.3.0
 ### Added
