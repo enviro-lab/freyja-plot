@@ -82,13 +82,14 @@ def getAggDF(file,name):
     """
 
     df = pd.read_csv(file,sep="\t")
+    df = df[df["Unnamed: 0"].notna()]
     df = df.rename(columns={"Unnamed: 0":"Sample name"})
     df["scheme"] = name
     return df
 
 def map_to_constellation(sample_strains, vals, mapDict):
-    # maps lineage names to constellations
-    # NOTE: edited from freyja.sample_deconvolv
+    """Maps lineage names to constellations
+    NOTE: edited from freyja.sample_deconvolv"""
     localDict = {}
     for jj, lin in enumerate(sample_strains):
         if lin in mapDict.keys():
@@ -107,7 +108,7 @@ def map_to_constellation(sample_strains, vals, mapDict):
             else:
                 localDict['NFW'] += vals[jj]
         else:
-            print("Other:", lin, vals[jj])
+            # print("Other:", lin, vals[jj])
             if 'Other' not in localDict.keys():
                 localDict['Other'] = vals[jj]
             else:
@@ -115,6 +116,31 @@ def map_to_constellation(sample_strains, vals, mapDict):
     # convert to descending order
     localDict = sorted(localDict.items(), key=lambda x: x[1], reverse=True)
     return localDict
+
+def _updateSummaryDict(main_dict:dict,adjustments:dict):
+    """Updates `main_dict` using `adjustments`.
+
+    If a lineage <key> ends with '.*', it and its sublineages will all recieve the <value>
+    """
+
+    if not adjustments: return main_dict
+
+    main_dict.update({k:v for k,v in adjustments.items() if not k.endswith(".*")})
+    main_dict.update({k.rstrip('.*'):v for k,v in adjustments.items() if k.endswith(".*")})
+    # # old, simple way
+    # return main_dict
+    for k in main_dict.keys():
+        for update_key, update_value in adjustments.items():
+            if update_key.endswith(".*"):
+                base = update_key.replace(".*","")
+                if k == base or k.startswith(f"{base}."):
+                    main_dict[k] = update_value
+            else:
+                if k == update_key:
+                    main_dict[k] = update_value
+    # temp check:
+
+    return main_dict
 
 def summarizeLineages(lineage_list:list, abundance_list:list, summary_dict:dict):
     """Converts unsummarized `lineage_dict` to summarized lineage and abundance lists
@@ -127,15 +153,11 @@ def summarizeLineages(lineage_list:list, abundance_list:list, summary_dict:dict)
 
     # for lineage, abundance in lineage_dict.items():
     #     for summary_lineage,s_abundance in 
-    mapDict = buildLineageMap("-1")
-    if not "Other" in mapDict.keys():
-        mapDict["Other"] = "Other"
-    mapDict.update(summary_dict)
-    summarized_lineages = map_to_constellation(lineage_list, abundance_list, mapDict)
-    print(summarized_lineages)
-    with open("/projects/enviro_lab/decon_compare/freyja/MixedControl-plots/lineages.tsv", "w") as out:
-        for l, a in mapDict.items():
-            out.write(f"{l}\t{a}\n")
+    summarized_lineages = map_to_constellation(lineage_list, abundance_list, summary_dict)
+    # print(summarized_lineages)
+    # with open("/projects/enviro_lab/decon_compare/freyja/MixedControl-plots/lineages.tsv", "w") as out:
+    #     for l, a in summary_dict.items():
+    #         out.write(f"{l}\t{a}\n")
     found_lineages = set()
     lineages, abundances = [], []
     for l, a in summarized_lineages:
@@ -144,7 +166,6 @@ def summarizeLineages(lineage_list:list, abundance_list:list, summary_dict:dict)
         if l in found_lineages:
             print("already exists: l")
             exit(1)
-    # exit(1)
     return lineages, abundances
 
 def getLineageAbundanceDfs(agg_df,summarized=False,date_col=None,summary_dict:dict={}):
@@ -214,13 +235,16 @@ def _parse_file_map(file_map,compare:bool):
     """Converts `file_map` argument from multiple input datatypes to dictionary"""
 
     if type(file_map) == dict:
-        file_dict = file_map
+        file_dict = {Path(f):n for f,n in file_map.items()}
     elif isinstance(file_map,(str,Path)):
-        file_dict = {file_map:Path(file_map).stem }
+        file_dict = {Path(file_map):Path(file_map).stem }
     elif isinstance(file_map,(list,set,tuple)):
-        file_dict = {file:Path(file).stem for file in file_map}
+        file_dict = {Path(file):Path(file).stem for file in file_map}
     else:
         raise AttributeError("`filemap` must be a string, Path, iterable, or dict")
+    for f in file_dict.keys():
+        if not f.exists():
+            raise FileNotFoundError(f)
     # determine whether this dataset is a comparison or not
     num_schemes_found = len(set(file_dict.values()))
     comparison = False if num_schemes_found==1 else compare
@@ -293,6 +317,8 @@ class FreyjaPlotter:
         # convert to dict with minimum columns ("lineages","abundances")
         self.freyja_df = self._getFreyjaDf(agg_df)
         self.summarized_freyja_df = self._getFreyjaDf(agg_df,summarized=True)
+        self.percent_expected_df = None
+        self.summarized_percent_expected_df = None
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(compare: {self.compare}, data: {list(self.file_dict.values()) if type(self.file_dict)==dict else self.file_dict})"
@@ -352,6 +378,15 @@ class FreyjaPlotter:
         """
 
         return pd.concat((getAggDF(file,name) for file,name in self.file_dict.items()))
+    
+    def updateSummaryDict(self):
+        """Uses freyja summary dict as base and adds in user-supplied `summary_dict` entries"""
+
+        mapDict = buildLineageMap("-1")
+        if not "Other" in mapDict.keys():
+            mapDict["Other"] = "Other"
+        mapDict = _updateSummaryDict(main_dict=mapDict, adjustments=self.summary_dict)
+        self.summary_dict = mapDict
 
     # convert agggregated data to lineage/abundance df (summarized or all)
     def _getFreyjaDf(self,agg_df,summarized=False):
@@ -362,6 +397,9 @@ class FreyjaPlotter:
         * `summarized` (bool): whether to use summarized lineages rather than all lineages lineages
         """
 
+        if summarized:
+            self.updateSummaryDict()
+
         # create and concat dfs for each row
         df = pd.concat((
             ab_df for ab_df in getLineageAbundanceDfs(agg_df,summarized=summarized,date_col=self.date_col,summary_dict=self.summary_dict)
@@ -371,15 +409,16 @@ class FreyjaPlotter:
         df["abundances"] = df["abundances"].astype(float)
         if self.date_col:
             df[self.date_col] = pd.to_datetime(df[self.date_col])
+        df = df.reset_index().drop(columns=["index"])
         return df
 
     # Plotting
-    def getPlottingDf(self,summarized=False,superlineage=False,samples="all",include_pattern=None,exclude_pattern=None,start_date=None,end_date=None,minimum=0.05,df=None,filter=True,super_method='dot-split'):
+    def getPlottingDf(self,summarized=False,superlineage=None,samples="all",include_pattern=None,exclude_pattern=None,start_date=None,end_date=None,minimum=0.05,df=None,filter=True,super_method='dot-split'):
         """Returns DataFrame of desired data/samples for plotting
         
         Args:
         * `summarized` (bool): whether to use summarized lineages rather than all lineages, defaults to False
-        * `superlineage` (bool)int|None): number of superlineages to consider, ignored if not provided, 0 is the base lineage, defaults to None
+        * `superlineage` (bool|int|None): number of superlineages to consider, ignored if not provided, 0 is the base lineage, defaults to None
         * `samples` (list|"all"): only the listed samples will be plotted
         * `include_pattern` (str): samples to include like "sample1|sample2" used by pandas.Series.str.contains()
         * `exclude_pattern` (str): samples to exclude like "sample1|sample2" used by pandas.Series.str.contains()
@@ -426,7 +465,7 @@ class FreyjaPlotter:
 
         Args:
         * `summarized` (bool): whether to use summarized lineages rather than all lineages, defaults to False
-        * `superlineage` (bool)int|None): number of superlineages to consider, ignored if not provided, 0 is the base lineage, defaults to None
+        * `superlineage` (bool|int|None): number of superlineages to consider, ignored if not provided, 0 is the base lineage, defaults to None
         * `samples` (list|"all"): only the listed samples will be plotted
         * `include_pattern` (str): samples to include like "sample1|sample2" used by pandas.Series.str.contains()
         * `exclude_pattern` (str): samples to exclude like "sample1|sample2" used by pandas.Series.str.contains()
@@ -450,7 +489,7 @@ class FreyjaPlotter:
 
         Args:
         * `summarized` (bool): whether to use summarized lineages rather than all lineages, defaults to False
-        * `superlineage` (bool)int|None): number of superlineages to consider, ignored if not provided, 0 is the base lineage, defaults to None
+        * `superlineage` (bool|int|None): number of superlineages to consider, ignored if not provided, 0 is the base lineage, defaults to None
         * `samples` (list|"all"): only the listed samples will be plotted
         * `include_pattern` (str): samples to include like "sample1|sample2" used by pandas.Series.str.contains()
         * `exclude_pattern` (str): samples to exclude like "sample1|sample2" used by pandas.Series.str.contains()
@@ -471,7 +510,7 @@ class FreyjaPlotter:
 
         Args:
         * `summarized` (bool): whether to use summarized lineages rather than all lineages, defaults to False
-        * `superlineage` (bool)int|None): number of superlineages to consider, ignored if not provided, 0 is the base lineage, defaults to None
+        * `superlineage` (bool|int|None): number of superlineages to consider, ignored if not provided, 0 is the base lineage, defaults to None
         * `df` (DataFrame): dataframe to use and filter rather than internal freyja_df, defaults to None
         """
 
@@ -590,12 +629,12 @@ class FreyjaPlotter:
 
         return group_by_col,date_col,freyja_df
 
-    def plotLineagesSinglePlot(self, lineages, groupings, schemes, freyja_df, group_by_col, lineage_col, minimum, title, summarized):
+    def plotLineagesSinglePlot(self, lineages, groupings, schemes, freyja_df, group_by_col, lineage_col, minimum):
         """Returns stacked bar chart showing lineage abundances for each sample
         
         Args:
         * `summarized` (bool): whether to use summarized lineages rather than all lineages, defaults to False
-        * `superlineage` (bool)int|None): number of superlineages to consider, ignored if not provided, 0 is the base lineage, defaults to None
+        * `superlineage` (bool|int|None): number of superlineages to consider, ignored if not provided, 0 is the base lineage, defaults to None
         * `minimum` (float): minimum abundance value to include in plot - anything less is categorized in "Other", defualts to 0.05
         * `fn` (str|Path): where to write fig, if provided, defaults to None
         * `title` (str): plot title, defualts to "Freyja lineage abundance"
@@ -666,7 +705,7 @@ class FreyjaPlotter:
             )
         return fig
 
-    def plotLineagesSubplots(self, lineages, groupings, schemes, freyja_df, group_by_col, lineage_col, minimum, title, summarized):        
+    def plotLineagesSubplots(self, lineages, groupings, schemes, freyja_df, group_by_col, lineage_col, minimum):        
         """Returns stacked bar chart showing lineage abundances for each sample
         
         Args:
@@ -734,12 +773,12 @@ class FreyjaPlotter:
 
         return fig
 
-    def plotLineages(self,summarized=False,superlineage=None,minimum=0.05,fn=None,title=None,samples="all",include_pattern=None,exclude_pattern=None,start_date=None,end_date=None,super_method='dot-split',group_by:Literal["sample","date"]="sample",group_by_col:str=None,date_col=None,period=None,subplots=False):
+    def plotLineages(self,summarized=False,superlineage=None,minimum=0.05,fn=None,title=None,samples="all",include_pattern=None,exclude_pattern=None,start_date=None,end_date=None,super_method='dot-split',group_by:Literal["sample","date"]="sample",group_by_col:str=None,date_col=None,period=None,subplots=False, height=None):
         """Returns stacked bar chart showing lineage abundances for each sample
         
         Args:
         * `summarized` (bool): whether to use summarized lineages rather than all lineages, defaults to False
-        * `superlineage` (bool)int|None): number of superlineages to consider, ignored if not provided, 0 is the base lineage, defaults to None
+        * `superlineage` (bool|int|None): number of superlineages to consider, ignored if not provided, 0 is the base lineage, defaults to None
         * `minimum` (float): minimum abundance value to include in plot - anything less is categorized in "Other", defualts to 0.05
         * `fn` (str|Path): where to write fig, if provided, defaults to None
         * `title` (str): plot title, defualts to "Freyja lineage abundance"
@@ -765,13 +804,15 @@ class FreyjaPlotter:
         # exit(1)
 
         if subplots:
-            fig = self.plotLineagesSubplots(lineages=lineages, groupings=groupings, schemes=schemes, freyja_df=freyja_df, group_by_col=group_by_col, lineage_col=lineage_col, minimum=minimum, title=title, summarized=summarized)
+            fig = self.plotLineagesSubplots(lineages=lineages, groupings=groupings, schemes=schemes, freyja_df=freyja_df, group_by_col=group_by_col, lineage_col=lineage_col, minimum=minimum)
         else:
-            fig = self.plotLineagesSinglePlot(lineages=lineages, groupings=groupings, schemes=schemes, freyja_df=freyja_df, group_by_col=group_by_col, lineage_col=lineage_col, minimum=minimum, title=title, summarized=summarized)
+            fig = self.plotLineagesSinglePlot(lineages=lineages, groupings=groupings, schemes=schemes, freyja_df=freyja_df, group_by_col=group_by_col, lineage_col=lineage_col, minimum=minimum)
         if not title:
             title = "Freyja lineage abundance" if not summarized else "Freyja lineage abundance - summary"
 
-        fig.update_layout(barmode="stack",title=title,)
+        if not height and subplots:
+            height = len(schemes) * 250
+        fig.update_layout(barmode="stack",title=title,height=height)
         self.update_colormap(fig)
 
         if fn: save(fig,fn)
@@ -807,8 +848,144 @@ class FreyjaPlotter:
         if fn: save(fig,fn)
         return fig
     
+    def plotPercentExpectedBox(self,summarized=False,superlineage=None,fn=None,color="scheme",x=None,title="Distribution of estimated abundance for each lineage as a percent of expected abundance",samples="all",include_pattern=None,exclude_pattern=None,start_date=None,end_date=None,super_method='dot-split',schemes=[],lineages=[],combine_lineages=False):
+        """Returns a box plot comparing each scheme vs the scheme containing expected abundance values
+
+        Args:
+        * `summarized` (bool): whether to use summarized lineages rather than all lineages, defaults to False
+        * `superlineage` (bool|int|None): number of superlineages to consider, ignored if not provided, 0 is the base lineage, defaults to None
+        * `fn` (str|Path): where to write fig, if provided, defaults to None
+        * `title` (str): plot title, defualts to "Distribution of estimated abundance for each lineage as a percent of expected abundance"
+        * `samples` (list|"all"): only the listed samples will be plotted
+        * `include_pattern` (str): samples to include like "sample1|sample2"
+        * `exclude_pattern` (str): samples to exclude like "sample1|sample2"
+        * `group_by` (str): field by which to separate bars. Defaults to 'sample'.
+           "sample" labels each bar by sample name. 'date', but it could be useful to use a date column (included in your agg_df) instead
+        * `date_col` (str): name of the date field in the metadata
+        * `period` (str): if `group_by=="date"`, the time period to use for each grouping. Defaults to 'week'
+        * `subplots` (bool): if True, stacks each scheme on a different plot with a shared x axis. Defaults to False.
+        """
+
+        freyja_df = self.getPlottingDf(summarized=summarized,superlineage=superlineage,samples=samples,include_pattern=include_pattern,exclude_pattern=exclude_pattern,start_date=start_date,end_date=end_date,minimum=0.0,super_method=super_method)
+        lineage_col = getLineageCol(superlineage=superlineage,summarized=summarized,super_method=super_method)
+        schemes = schemes if schemes else freyja_df["scheme"].unique().tolist()
+        lineages = lineages if lineages else freyja_df.sort_values(by="abundances")[lineage_col].unique().tolist()[::-1]
+
+        expected_lineages = freyja_df.loc[freyja_df["scheme"]=="Expected", "lineages"].unique()
+        freyja_df = pd.concat((dff for dff in add_missing_lineages(freyja_df,expected_lineages)))
+        freyja_df["expected_abundance"] = freyja_df.apply(getExpectedAbundance,axis=1,df=freyja_df)
+        freyja_df = freyja_df[freyja_df["scheme"]!="Expected"]
+        freyja_df["percent_of_expected"] = freyja_df.apply(lambda row: row["abundances"] / row["expected_abundance"] * 100. if row["expected_abundance"] > 0.0 else pd.NA, axis=1)
+        # print(freyja_df)
+        # exit()
+
+        percent_df = freyja_df[freyja_df["percent_of_expected"].notna()].sort_values(["lineages","scheme"])
+        if combine_lineages:
+            x = x if x else "scheme"
+            fig = px.box(
+                percent_df,x=x,y="percent_of_expected",
+                color=color,
+                points='all',
+                hover_data=["scheme","lineages","percent_of_expected","Sample name"],
+                title=title,
+                # width=500,
+                # height=550,
+                labels={'x':'Tool', 'y':'Percent of expected abundance'},
+            )
+        else:
+            x = x if x else "lineages"
+            fig = px.box(
+                percent_df,x=x,y="percent_of_expected",
+                color=color,
+                points='all',
+                hover_data=["scheme","lineages","percent_of_expected","Sample name"],
+                title=title
+                # width=500,
+                # height=550,
+            )
+
+        if fn: save(fig,fn)
+        return fig
+    
+    def plotLineageDetections(self,show_counts=True,summarized=True,fn=None,color="scheme",x=None,title="Detection of expected lineages",samples="all",include_pattern=None,exclude_pattern=None,start_date=None,end_date=None,schemes=[],lineages=[],combine_lineages=False,height=None):
+
+        # prep data
+        freyja_df = self.getPlottingDf(summarized=summarized,samples=samples,include_pattern=include_pattern,exclude_pattern=exclude_pattern,start_date=start_date,end_date=end_date,minimum=0.0)
+        lineage_col = getLineageCol(summarized=summarized)
+        assert "Expected" in freyja_df["scheme"].unique()
+        expected_df = freyja_df[freyja_df["scheme"]=="Expected"]
+        freyja_df = freyja_df[freyja_df["scheme"]!="Expected"]
+        sample_names = expected_df["Sample name"].unique()
+
+        if show_counts:
+            data = {"Sample name":[], "scheme":[], "Correctly detected": [], "Incorrectly detected": []}
+        else:
+            data = {"Sample name":[], "scheme":[], "lineages":[], "abundances":[]}
+        for scheme in freyja_df["scheme"].unique():
+            for sample in sample_names:
+                sample_df = freyja_df.loc[(freyja_df["scheme"]==scheme) & (freyja_df["Sample name"]==sample)]
+                expected_lineages = set(expected_df.loc[(expected_df["Sample name"]==sample), "lineages"].unique())
+                found_lineages = set(sample_df["lineages"].unique())
+
+                correctly_detected = expected_lineages.intersection(found_lineages)
+                incorrectly_detected = expected_lineages-found_lineages
+                if show_counts:
+                    data["Sample name"].append(sample)
+                    data["scheme"].append(scheme)
+                    data["Correctly detected"].append(len(correctly_detected))
+                    data["Incorrectly detected"].append(len(incorrectly_detected))
+                else:
+                    for lineage in expected_lineages:
+                        data["Sample name"].append(sample)
+                        data["scheme"].append(scheme)
+                        x = 1 if lineage in correctly_detected else -1
+                        expected_abundance = expected_df.loc[(expected_df["Sample name"]==sample) & (expected_df["lineages"]==lineage), "abundances"].squeeze()
+                        # NOTE: to plot with even blocks for everything, replace expected_abundance with 1
+                        data["lineages"].append(lineage)
+                        data["abundances"].append(x * expected_abundance)
+                        # print(sample,scheme,x * expected_abundance)
+        df = pd.DataFrame(data)
+        # df = df.sort_values(by="Sample name")
+
+        # plot
+        if show_counts:
+            fig = px.bar(df, x="Sample name", y=["Correctly detected","Incorrectly detected"], facet_row="scheme", text_auto=True, height=height)
+        else:
+            fig = px.bar(df, x="Sample name", y="abundances", color="lineages", facet_row="scheme", text="lineages", height=height)
+            fig.add_hline(y=0, line_dash="dot", row="all", col="all",
+              annotation_text="", 
+              annotation_position=None)
+            fig.update_layout(
+                # barmode='stack', 
+                xaxis={'categoryorder':'category ascending'},
+            )
+        # fig.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1]))
+        fig.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1].replace(": ","<br>")))
+        return fig
+
+
+
 ### Additional helper functions
 # These are taken and adapted from Freyja so we can summarize lineages consistently
+
+def getExpectedAbundance(s,df):
+    if s["scheme"] == "Expected":
+        return s["abundances"]
+    else:
+        x = df.loc[(df["Sample name"]==s["Sample name"]) & (df["lineages"]==s["lineages"]) & (df["scheme"]=="Expected"), "abundances"].squeeze()
+        if type(x) == pd.Series and x.empty: return 0.0
+        else: return x
+
+def add_missing_lineages(compare_df,expected_lineages):
+    """For each sample name, add zero-abundance lineages for any that it lacks"""
+    yield compare_df
+    schemes = [s for s in compare_df["scheme"].unique() if s != "Expected"]
+    for scheme in schemes:
+        for sample in compare_df["Sample name"].unique():
+            sample_df = compare_df[compare_df["Sample name"]==sample]
+            for lineage in set(expected_lineages) - set(sample_df["lineages"].unique()) - set(["None"]):
+                expected_abundance = compare_df.loc[(compare_df["scheme"]=="Expected") & (compare_df["scheme"]=="Expected") & (compare_df["lineages"]==lineage), "abundances"].sum()
+                yield pd.DataFrame({"Sample name":[sample], "lineages":[lineage], "abundances":[0], "scheme":[scheme], "expected_abundance":[expected_abundance]})
 
 def summarize_lineages(lineage_list, abundance_list):
     """Yields lineages and abundances summarized to WHO names and other larger grouplings"""
