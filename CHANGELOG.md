@@ -4,9 +4,12 @@
 Maybe incorporate aliases into superlineage/sublineage detection. See https://github.com/cov-lineages/pango-designation/blob/master/pango_designation/alias_key.json for more.
 
 ## unversioned updates
+
+## v0.5.0
 ### Added
 * plots to summarize lineage detection when abundance values aren't relevent
 * boxplot capability
+* can now return the data behind some figures using `return_df`
 
 ## v0.4.0
 ### Added

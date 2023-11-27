@@ -95,6 +95,8 @@ def map_to_constellation(sample_strains, vals, mapDict):
         if lin in mapDict.keys():
             if mapDict[lin] not in localDict.keys():
                 localDict[mapDict[lin]] = vals[jj]
+                # # TODO: remove
+                # if mapDict[lin] == "Omicron": print(lin,"-> omicron")
             else:
                 localDict[mapDict[lin]] += vals[jj]
         elif lin.startswith('A.') or lin == 'A':
@@ -597,10 +599,13 @@ class FreyjaPlotter:
         * `period` (str): if `group_by=="date"`, the time period to use for each grouping.
         """
 
-        period_strftime_map = dict(week="%Y-%m-%d",month="%Y-%m",year="%Y",)
-        if not "Weeknum" in freyja_df.columns:
-            freyja_df["Weeknum"] = freyja_df[date_col].apply(lambda x: (x - timedelta(days=x.dayofweek) + timedelta(days=3)))   
-        freyja_df[group_by_col] = [pandas_datetime.strftime(period_strftime_map[period]) for pandas_datetime in freyja_df["Weeknum"]]
+        period_strftime_map = dict(day="%Y-%m-%d",week="%Y-%m-%d",month="%Y-%m",year="%Y",)
+        if period == "week":
+            period_col = "Weeknum"
+            if not "Weeknum" in freyja_df.columns:
+                freyja_df["Weeknum"] = freyja_df[date_col].apply(lambda x: (x - timedelta(days=x.dayofweek) + timedelta(days=3)))
+        else: period_col = date_col
+        freyja_df[group_by_col] = [pandas_datetime.strftime(period_strftime_map[period]) for pandas_datetime in freyja_df[period_col]]
         return freyja_df
 
     def checkGroupByDetails(self,group_by,freyja_df,date_col,period='week'):
@@ -629,7 +634,7 @@ class FreyjaPlotter:
 
         return group_by_col,date_col,freyja_df
 
-    def plotLineagesSinglePlot(self, lineages, groupings, schemes, freyja_df, group_by_col, lineage_col, minimum):
+    def plotLineagesSinglePlot(self, lineages, groupings, schemes, freyja_df, group_by_col, lineage_col, minimum, return_df=False):
         """Returns stacked bar chart showing lineage abundances for each sample
         
         Args:
@@ -657,7 +662,10 @@ class FreyjaPlotter:
         # add count each lineage abundance and add this as bars for each sample
         # other_counts = [0] * len(groupings) * len(schemes)
         total_counts =  [0] * len(groupings) * len(schemes)
-        fig = go.Figure()
+        if return_df:
+            data = {"x":[],"y":[],"lineages":[]}
+        else:
+            fig = go.Figure()
         # print(lineages)
         for lineage in lineages:
             y = []
@@ -678,7 +686,13 @@ class FreyjaPlotter:
                     total_counts[i] += abundance
             if not set(y) == {0}:
                 # print("y",y)
-                fig.add_bar(x=x,y=y,name=lineage,
+                if return_df:
+                    data["x"].extend(x)
+                    data["y"].extend(y)
+                    data["lineages"].extend([lineage]*len(x))
+                    # data[""]
+                else:
+                    fig.add_bar(x=x,y=y,name=lineage,
                             text=lineage,textposition="inside",
                             marker_color=self.colormap.get(lineage),
                             )
@@ -698,15 +712,23 @@ class FreyjaPlotter:
         # print(x)
         # print(other_counts)
         # exit(1)
-        fig.add_bar(
-            x=x,y=other_counts,name="Other",
-            text="Other",textposition="inside",
-            marker_color=self.colormap["Other"],
-            )
-        return fig
+        if return_df:
+            data["x"].extend(x)
+            data["y"].extend(other_counts)
+            data["lineages"].extend(["Other"]*len(x))
+            df = pd.DataFrame(data)
+            return df
 
-    def plotLineagesSubplots(self, lineages, groupings, schemes, freyja_df, group_by_col, lineage_col, minimum):        
-        """Returns stacked bar chart showing lineage abundances for each sample
+        else:
+            fig.add_bar(
+                x=x,y=other_counts,name="Other",
+                text="Other",textposition="inside",
+                marker_color=self.colormap["Other"],
+                )
+            return fig
+
+    def plotLineagesSubplots(self, lineages, groupings, schemes, freyja_df, group_by_col, lineage_col, minimum, subplot_order=None):        
+        """Returns stacked bar charts showing lineage abundances for each grouping
         
         Args:
         * `lineages`: list of lineages to plot
@@ -717,13 +739,22 @@ class FreyjaPlotter:
         * `lineage_col` (str): field to use to gather lineage names.
         * `minimum` (float): minimum abundance value to include in plot - anything less is categorized in "Other", defualts to 0.05
         * `summarized` (bool): whether to use summarized lineages rather than all lineages, defaults to False
-        * `title` (str): plot title, defualts to "Freyja lineage abundance"
+        * `subplot_order` (str): list ordering each subplot, defaults to None"
         """
 
-        subplot_titles = [scheme.title() for scheme in schemes]
-        fig = make_subplots(rows=self.num_schemes, cols=1, shared_xaxes=True ,subplot_titles=subplot_titles)
+        # subplot_order = [scheme.title() for scheme in schemes]
+        if subplot_order != None:
+            subplot_order = subplot_order
+        else:
+            if "Expected" in schemes:
+                subplot_order = ["Expected"] + sorted([s for s in schemes if s != "Expected"], key=str.casefold)
+            else: subplot_order = sorted(schemes, key=str.casefold)
 
-        for i, scheme in enumerate(schemes):
+            # subplot_order = [scheme for scheme in subplot_order]
+
+        fig = make_subplots(rows=self.num_schemes, cols=1, shared_xaxes=True ,subplot_titles=subplot_order)
+
+        for i, scheme in enumerate(subplot_order):
             row = i+1
             total_counts =  [0] * len(groupings)
             for lineage in lineages:
@@ -773,7 +804,7 @@ class FreyjaPlotter:
 
         return fig
 
-    def plotLineages(self,summarized=False,superlineage=None,minimum=0.05,fn=None,title=None,samples="all",include_pattern=None,exclude_pattern=None,start_date=None,end_date=None,super_method='dot-split',group_by:Literal["sample","date"]="sample",group_by_col:str=None,date_col=None,period=None,subplots=False, height=None):
+    def plotLineages(self,summarized=False,superlineage=None,minimum=0.05,fn=None,title=None,samples="all",include_pattern=None,exclude_pattern=None,start_date=None,end_date=None,super_method='dot-split',group_by:Literal["sample","date"]="sample",group_by_col:str=None,date_col=None,period=None,subplots=False, height=None, subplot_order=None,return_df=False):
         """Returns stacked bar chart showing lineage abundances for each sample
         
         Args:
@@ -790,6 +821,7 @@ class FreyjaPlotter:
         * `date_col` (str): name of the date field in the metadata
         * `period` (str): if `group_by=="date"`, the time period to use for each grouping. Defaults to 'week'
         * `subplots` (bool): if True, stacks each scheme on a different plot with a shared x axis. Defaults to False.
+        * `return_df` (bool): if True, returns dataframe used for plot instead of plot
         """
 
         # filter  data and decide what to loop through
@@ -804,18 +836,30 @@ class FreyjaPlotter:
         # exit(1)
 
         if subplots:
-            fig = self.plotLineagesSubplots(lineages=lineages, groupings=groupings, schemes=schemes, freyja_df=freyja_df, group_by_col=group_by_col, lineage_col=lineage_col, minimum=minimum)
+            fig = self.plotLineagesSubplots(lineages=lineages, groupings=groupings, schemes=schemes, freyja_df=freyja_df, group_by_col=group_by_col, lineage_col=lineage_col, minimum=minimum, subplot_order=subplot_order)
         else:
-            fig = self.plotLineagesSinglePlot(lineages=lineages, groupings=groupings, schemes=schemes, freyja_df=freyja_df, group_by_col=group_by_col, lineage_col=lineage_col, minimum=minimum)
+            fig = self.plotLineagesSinglePlot(lineages=lineages, groupings=groupings, schemes=schemes, freyja_df=freyja_df, group_by_col=group_by_col, lineage_col=lineage_col, minimum=minimum, return_df=return_df)
+        
+        if return_df:
+            return fig
+
         if not title:
             title = "Freyja lineage abundance" if not summarized else "Freyja lineage abundance - summary"
 
         if not height and subplots:
             height = len(schemes) * 250
-        fig.update_layout(barmode="stack",title=title,height=height)
-        self.update_colormap(fig)
+        fig.update_layout(
+            barmode="stack",
+            title=title,
+            height=height,
+            # xaxis_title="Mixtures",
+            # yaxis_title="Proportion",
+            # legend_title="Lineage",
+            )
+        # self.update_colormap(fig) # doesn't work
 
         if fn: save(fig,fn)
+
         return fig
     
     def combineLineagePlots(self,figs,subplot_titles=None,title="Freyja Lineage Abundance",height=900,shared_xaxes=True,fn=None):
@@ -848,7 +892,7 @@ class FreyjaPlotter:
         if fn: save(fig,fn)
         return fig
     
-    def plotPercentExpectedBox(self,summarized=False,superlineage=None,fn=None,color="scheme",x=None,title="Distribution of estimated abundance for each lineage as a percent of expected abundance",samples="all",include_pattern=None,exclude_pattern=None,start_date=None,end_date=None,super_method='dot-split',schemes=[],lineages=[],combine_lineages=False):
+    def plotPercentExpectedBox(self,summarized=False,superlineage=None,fn=None,color="scheme",x=None,title="Distribution of estimated abundance for each lineage as a percent of expected abundance",samples="all",include_pattern=None,exclude_pattern=None,start_date=None,end_date=None,super_method='dot-split',schemes=[],lineages=[],combine_lineages=False,return_df=False,sort_key=None):
         """Returns a box plot comparing each scheme vs the scheme containing expected abundance values
 
         Args:
@@ -879,35 +923,34 @@ class FreyjaPlotter:
         # print(freyja_df)
         # exit()
 
-        percent_df = freyja_df[freyja_df["percent_of_expected"].notna()].sort_values(["lineages","scheme"])
         if combine_lineages:
             x = x if x else "scheme"
-            fig = px.box(
-                percent_df,x=x,y="percent_of_expected",
-                color=color,
-                points='all',
-                hover_data=["scheme","lineages","percent_of_expected","Sample name"],
-                title=title,
-                # width=500,
-                # height=550,
-                labels={'x':'Tool', 'y':'Percent of expected abundance'},
-            )
+            labels={'tool':'Tool', 'percent_of_expected':'Percent of expected abundance'}
         else:
             x = x if x else "lineages"
-            fig = px.box(
-                percent_df,x=x,y="percent_of_expected",
-                color=color,
-                points='all',
-                hover_data=["scheme","lineages","percent_of_expected","Sample name"],
-                title=title
-                # width=500,
-                # height=550,
-            )
+            labels={"percent_of_expected":"Percent of expected abundance","lineages":"Lineages","scheme":"Scheme"}
+
+        key = sort_key if sort_key!=None else lambda col: col.str.lower()
+        percent_df = freyja_df[freyja_df["percent_of_expected"].notna()].sort_values(["lineages","scheme"], key=key)
+        # percent_df = freyja_df[freyja_df["percent_of_expected"].notna()].sort_values([x], key=key)
+        
+        if return_df: return percent_df
+
+        fig = px.box(
+            percent_df,x=x,y="percent_of_expected",
+            color=color,
+            points='all',
+            hover_data=["scheme","lineages","percent_of_expected","Sample name"],
+            title=title,
+            # width=500,
+            # height=550,
+            labels=labels,
+        )
 
         if fn: save(fig,fn)
         return fig
     
-    def plotLineageDetections(self,show_counts=True,summarized=True,fn=None,color="scheme",x=None,title="Detection of expected lineages",samples="all",include_pattern=None,exclude_pattern=None,start_date=None,end_date=None,schemes=[],lineages=[],combine_lineages=False,height=None):
+    def plotLineageDetections(self,show_counts=True,summarized=True,fn=None,color="scheme",x=None,title="Detection of expected lineages",include_unexpected_lineages=False,samples="all",include_pattern=None,exclude_pattern=None,start_date=None,end_date=None,minimum_abundance=0.0,schemes=[],lineages=[],combine_lineages=False,height=None):
 
         # prep data
         freyja_df = self.getPlottingDf(summarized=summarized,samples=samples,include_pattern=include_pattern,exclude_pattern=exclude_pattern,start_date=start_date,end_date=end_date,minimum=0.0)
@@ -918,40 +961,82 @@ class FreyjaPlotter:
         sample_names = expected_df["Sample name"].unique()
 
         if show_counts:
-            data = {"Sample name":[], "scheme":[], "Correctly detected": [], "Incorrectly detected": []}
+            data = {"Sample name":[], "scheme":[], "Correctly detected": [], "Failed to detect": []}
+            if include_unexpected_lineages:
+                data["Unexpected but detected"] = []
         else:
-            data = {"Sample name":[], "scheme":[], "lineages":[], "abundances":[]}
-        for scheme in freyja_df["scheme"].unique():
+            data = {"Sample name":[], "scheme":[], lineage_col:[], "abundances":[]}
+        for scheme in sorted(freyja_df["scheme"].unique(),key=str.casefold):
             for sample in sample_names:
                 sample_df = freyja_df.loc[(freyja_df["scheme"]==scheme) & (freyja_df["Sample name"]==sample)]
-                expected_lineages = set(expected_df.loc[(expected_df["Sample name"]==sample), "lineages"].unique())
-                found_lineages = set(sample_df["lineages"].unique())
+                expected_lineages = set(expected_df.loc[(expected_df["Sample name"]==sample), lineage_col].unique())
+                lineages_to_include = expected_lineages if not include_unexpected_lineages else set(sample_df[lineage_col].unique()).union(expected_lineages)
+                found_lineages = set(sample_df[lineage_col].unique())
 
                 correctly_detected = expected_lineages.intersection(found_lineages)
-                incorrectly_detected = expected_lineages-found_lineages
+                went_undetected = expected_lineages - found_lineages
                 if show_counts:
                     data["Sample name"].append(sample)
                     data["scheme"].append(scheme)
                     data["Correctly detected"].append(len(correctly_detected))
-                    data["Incorrectly detected"].append(len(incorrectly_detected))
+                    data["Failed to detect"].append(len(went_undetected))
+                    y_cols = ["Correctly detected","Failed to detect"]
+                    if include_unexpected_lineages==True:
+                        extras_detected = found_lineages - expected_lineages
+                        data["Unexpected but detected"].append(len(extras_detected))
+                        y_cols.append("Unexpected but detected")
                 else:
-                    for lineage in expected_lineages:
+                    for lineage in lineages_to_include:
+                        if include_unexpected_lineages and lineage in went_undetected: continue
+                        if lineage == "Other": continue
+                        calculated_abundance = sample_df.loc[(sample_df["Sample name"]==sample) & (sample_df[lineage_col]==lineage), "abundances"].squeeze()
+                        if isinstance(calculated_abundance,pd.Series) and calculated_abundance.empty:
+                            calculated_abundance = 0
+                            # print("calc_ab:",calculated_abundance,lineage)
+                            # print(sample_df.loc[(sample_df["Sample name"]==sample) & (sample_df[lineage_col]==lineage), "abundances"])
+                            # print(sample_df.loc[(sample_df["Sample name"]==sample) & (sample_df[lineage_col]==lineage)])
+                            # print(sample_df.loc[(sample_df[lineage_col]==lineage)])
+                            # print(sample_df.loc[(sample_df["Sample name"]==sample)])
+                        if calculated_abundance < minimum_abundance: continue
                         data["Sample name"].append(sample)
                         data["scheme"].append(scheme)
                         x = 1 if lineage in correctly_detected else -1
-                        expected_abundance = expected_df.loc[(expected_df["Sample name"]==sample) & (expected_df["lineages"]==lineage), "abundances"].squeeze()
+                        expected_abundance = expected_df.loc[(expected_df["Sample name"]==sample) & (expected_df[lineage_col]==lineage), "abundances"].squeeze()
                         # NOTE: to plot with even blocks for everything, replace expected_abundance with 1
-                        data["lineages"].append(lineage)
-                        data["abundances"].append(x * expected_abundance)
+                        data[lineage_col].append(lineage)
+                        data["abundances"].append(x * (expected_abundance if not include_unexpected_lineages else 1))
                         # print(sample,scheme,x * expected_abundance)
         df = pd.DataFrame(data)
         # df = df.sort_values(by="Sample name")
+        # print(df)
+        # return
 
         # plot
         if show_counts:
-            fig = px.bar(df, x="Sample name", y=["Correctly detected","Incorrectly detected"], facet_row="scheme", text_auto=True, height=height)
+            fig = px.bar(
+                df, 
+                x="Sample name", 
+                y=y_cols, 
+                facet_row="scheme", 
+                text_auto=True, 
+                height=height, 
+                labels={"variable":"Result", "value":"Count", "Sample name":"Sample","abundances":"Abundances","lineages":"Lineages"},
+                title=title,
+            )
         else:
-            fig = px.bar(df, x="Sample name", y="abundances", color="lineages", facet_row="scheme", text="lineages", height=height)
+            if include_unexpected_lineages:
+                color = ""
+            fig = px.bar(
+                df, 
+                x="Sample name", 
+                y="abundances", 
+                color=lineage_col, 
+                facet_row="scheme", 
+                text=lineage_col, 
+                height=height,
+                labels={"variable":"Result", "value":"Count", "Sample name":"Sample","abundances":"Abundances","lineages":"Lineages"},
+                title=title,
+            )
             fig.add_hline(y=0, line_dash="dot", row="all", col="all",
               annotation_text="", 
               annotation_position=None)
@@ -959,8 +1044,14 @@ class FreyjaPlotter:
                 # barmode='stack', 
                 xaxis={'categoryorder':'category ascending'},
             )
+            self.update_colormap(fig)
+        fig.update_layout(
+            font_family="Inconsolata",
+            # font_family=["Inconsolata","Open Sans", "verdana", "arial", "sans-serif"],
+        )
         # fig.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1]))
         fig.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1].replace(": ","<br>")))
+        if fn: save(fig,fn)
         return fig
 
 
