@@ -307,6 +307,7 @@ class FreyjaPlotter:
         self.summary_dict = summary_dict
 
         if not "Other" in colormap.keys(): colormap["Other"] = "grey"
+        if not "below-threshold" in colormap.keys(): colormap["below-threshold"] = "black"
         self.colormap = colormap
         self.lineage_parent_list = {}
         # use input dataframe
@@ -345,12 +346,12 @@ class FreyjaPlotter:
         parent = ".".join(lineage.split(".")[:-1])
         return [parent] + self.getParents(parent)
         
-    def getSuperLineage(self,lineage,level=0,super_method='dot-split'):
+    def getSuperLineage(self,lineage,level=0,super_method:Literal['dot-split','cov-lineages']='dot-split'):
         """Returns superlineage of `lineage` at given `level`
         
         Args:
         * `lineage` (str): the lineage.
-        * `level` (int): maximum number of sublineages of the superlineage to return (0 gives the base superlineage).
+        * `level` (int): maximum number of sublineages of the superlineage to return (0 gives the base superlineage, -1 give the immediate superlineage).
         * `super_method` (bool): indicates method used to find superlineages.
             "dot-split" (default): split `lineage` on ".". 
             "cov-lineages": use definitions from cov-lineage (downloading, if `curl` is available in the shell).
@@ -358,14 +359,21 @@ class FreyjaPlotter:
 
         if lineage in ["Undetermined","Error","Other"]: return lineage
         if super_method=='dot-split':
-            superlineage = ".".join(lineage.split(".")[:level+1])
+            if level == -1:
+                superlineage = ".".join(lineage.split(".")[:-1])
+            else:
+                superlineage = ".".join(lineage.split(".")[:level+1])
         elif super_method=='cov-lineages':
             self.listSuperlineages()
             # list parents from most general to most specific
             parents = self.getParents(lineage)[::-1]
+            # print(lineage,parents)
             if level > len(parents)-1:
                 superlineage = lineage if not "." in lineage else ".".join(lineage.split(".")[:level+1])
+            elif len(parents) == 0:
+                return lineage
             else:
+                # print("level, parents:",level,parents[level])
                 superlineage = parents[level]
         else: raise AttributeError("`super_method` must be one of 'dot-split' or 'cov-lineages'")
         return superlineage+".*"
@@ -634,25 +642,23 @@ class FreyjaPlotter:
 
         return group_by_col,date_col,freyja_df
 
-    def plotLineagesSinglePlot(self, lineages, groupings, schemes, freyja_df, group_by_col, lineage_col, minimum, return_df=False):
+
+    def plotLineagesSinglePlot(self, lineages, groupings, schemes, freyja_df, group_by_col, lineage_col, minimum, return_df=False, threshold_strategy:Literal["other","superlineage"]="other"):
         """Returns stacked bar chart showing lineage abundances for each sample
         
         Args:
-        * `summarized` (bool): whether to use summarized lineages rather than all lineages, defaults to False
-        * `superlineage` (bool|int|None): number of superlineages to consider, ignored if not provided, 0 is the base lineage, defaults to None
+        * `lineages` (list): lineages to include in output
+        * `groupings` (list): the names of samples or dates by which data are grouped for each bar in chart
+        * `schemes` (list): the names of each scheme (used for naming each bar and setting how many are needed)
+        * `freyja_df` (DataFrame): filtered dataframe to plot by
+        * `group_by_col` (str): column name to use when seeking each grouping
+        * `lineage_col` (str): column name to use when seeking each lineage
         * `minimum` (float): minimum abundance value to include in plot - anything less is categorized in "Other", defualts to 0.05
-        * `fn` (str|Path): where to write fig, if provided, defaults to None
-        * `title` (str): plot title, defualts to "Freyja lineage abundance"
-        * `samples` (list|"all"): only the listed samples will be plotted
-        * `include_pattern` (str): samples to include like "sample1|sample2"
-        * `exclude_pattern` (str): samples to exclude like "sample1|sample2"
-        * `group_by` (str): field by which to separate bars. Defaults to 'sample'.
-           "sample" labels each bar by sample name. 'date', but it could be useful to use a date column (included in your agg_df) instead
-        * `date_col` (str): name of the date field in the metadata
-        * `period` (str): if `group_by=="date"`, the time period to use for each grouping. Defaults to 'week'
-        * `subplots` (bool): if True, stacks each scheme on a different plot with a shared x axis. Defaults to False.
+        * `return_df` (bool): a flag to return DataFrame insead of fig
+        * `threshold_strategy` (str): where to place abundances for lineages below threshold. If "other" -> "Other" group; if "superlinege" -> added to abundance for superlineage.
         """
 
+        # the below looks like [["sample1","sample2","sample1","sample2"],["scheme1","scheme1","scheme2","scheme2"]]
         name_scheme_array = [
             [grouping for grouping in groupings for _ in range(self.num_schemes)],
             [scheme for grouping in groupings for scheme in schemes]]
@@ -662,72 +668,139 @@ class FreyjaPlotter:
         # add count each lineage abundance and add this as bars for each sample
         # other_counts = [0] * len(groupings) * len(schemes)
         total_counts =  [0] * len(groupings) * len(schemes)
-        if return_df:
-            data = {"x":[],"y":[],"lineages":[]}
-        else:
+        data = {
+            "x":[],"y":[],"lineages":[],
+            }
+        if not return_df:
             fig = go.Figure()
-        # print(lineages)
         for lineage in lineages:
+            lineage_df = freyja_df[freyja_df[lineage_col]==lineage]
             y = []
             for i,grouping in enumerate(name_scheme_array[0]):
                 scheme = name_scheme_array[1][i]
-                # print(grouping,lineage,scheme)
-                # print(freyja_df.loc[(freyja_df[group_by_col]==grouping) & (freyja_df[lineage_col]==lineage) & (freyja_df["scheme"]==scheme), "abundances"])
-                # print(freyja_df.loc[(freyja_df[group_by_col]==grouping) & (freyja_df[lineage_col]==lineage) & (freyja_df["scheme"]==scheme), "abundances"].sum())
-                abundance = freyja_df.loc[(freyja_df[group_by_col]==grouping) & (freyja_df[lineage_col]==lineage) & (freyja_df["scheme"]==scheme), "abundances"].sum()
+                abundance = lineage_df.loc[(lineage_df[group_by_col]==grouping) & (lineage_df["scheme"]==scheme), "abundances"].sum()
                 if not isinstance(abundance, (np.floating, float)):
                     abundance = 0
-                # only add lineages above minimum to plot, save others for later
-                if lineage.lower() == "other" or abundance < minimum:
+                # save "other"s to figure out later
+                if lineage.lower() == "other":
                     y.append(0)
                     # other_counts[i] += abundance
+                elif threshold_strategy == "other" and abundance < minimum:
+                    y.append(0)
                 else:
                     y.append(abundance)
                     total_counts[i] += abundance
             if not set(y) == {0}:
                 # print("y",y)
-                if return_df:
-                    data["x"].extend(x)
-                    data["y"].extend(y)
-                    data["lineages"].extend([lineage]*len(x))
-                    # data[""]
-                else:
-                    fig.add_bar(x=x,y=y,name=lineage,
-                            text=lineage,textposition="inside",
-                            marker_color=self.colormap.get(lineage),
-                            )
-
-        # # calculuate "other" counts
-        # other_counts = []
-        # for i,grouping in enumerate(name_scheme_array[0]):
-        #     scheme = name_scheme_array[1][i]
-        #     other_counts.append(1.0 - (
-        #         freyja_df.loc[(freyja_df[group_by_col]==grouping) & (freyja_df["lineages"]!="Other") & (freyja_df["scheme"]==scheme), "abundances"].sum()
-        #         ))
+                data["x"].extend(x)
+                data["y"].extend(y)
+                data["lineages"].extend([lineage]*len(x))
+                # data["groupings"].extend(name_scheme_array[0])
         
         # calc other counts from totals:
         other_counts = [1-c for c in total_counts]
+        data["x"].extend(x)
+        data["y"].extend(other_counts)
+        data["lineages"].extend(["Other"]*len(x))
+        df = pd.DataFrame(data)
+        df = df.sort_values("lineages")
 
-        # finalize figure
-        # print(x)
-        # print(other_counts)
-        # exit(1)
+        if threshold_strategy == "superlineage":
+
+            def getNearestSuperLineage(lineage,allowed_supers=None,original_lineage=None):
+                    # print(original_lineage,lineage)
+                    if original_lineage == None: original_lineage = lineage
+                    superlineage = self.getSuperLineage(lineage,level=-1,super_method='dot-split').strip(".*")
+                    if not superlineage and "." not in lineage:
+                        superlineage = self.getSuperLineage(lineage,level=-1,super_method='cov-lineages').strip(".*")
+                        if not superlineage and "." not in lineage:
+                            return lineage
+                    # superlineage = self.getSuperLineage(lineage,level=-1,super_method='cov-lineages').strip(".*")
+                    # print("found:",superlineage)
+                    if allowed_supers == None:
+                        return superlineage
+                    elif superlineage in allowed_supers:
+                        # print("good find")
+                        return superlineage
+                    elif "." not in superlineage: return superlineage
+                    elif superlineage == lineage:
+                        raise Exception()
+                    if not superlineage:
+                        # if "." not in lineage: return lineage
+                        print("no superlineage for",lineage,abundance)
+                        exit()
+                    if superlineage not in allowed_supers:
+                        # print(superlineage,"not allowed")
+                        return getNearestSuperLineage(superlineage,allowed_supers,original_lineage=original_lineage)
+                    # else:
+                    #     print(f"can't find superlineage {superlineage} for lineage {lineage}")
+
+            def lowest_non_zero(abundance_map):
+                abundances = set()
+                for k,v in abundance_map.items():
+                    if v == 0:
+                        continue
+                    elif k in  ("below-threshold","Other"):
+                        continue
+                    else:
+                        abundances.add(v)
+                return min(abundances)
+
+            grouping_dfs = []
+            for grouping in df["x"].unique():
+                gdf = df[df["x"]==grouping]
+                abundance_map = dict(zip(gdf['lineages'],gdf["y"]))
+                while lowest_non_zero(abundance_map) < minimum:
+                    extra_abundance_map = {}
+                    for lineage,abundance in abundance_map.items():
+                        if lineage in  ("below-threshold","Other"):
+                            continue
+                        elif abundance == 0:
+                            continue
+                        elif abundance < minimum:
+                            superlineage = getNearestSuperLineage(lineage)
+                            if superlineage == lineage:
+                                superlineage = "below-threshold"
+                            if not abundance_map.get(superlineage):
+                                extra_abundance_map[superlineage] = extra_abundance_map.get(superlineage, 0) + abundance
+                            else:
+                                abundance_map[superlineage] = abundance_map[superlineage] + abundance
+                            abundance_map[lineage] = 0
+                    abundance_map.update(extra_abundance_map)
+                new_gdf = pd.DataFrame({"lineages":abundance_map.keys(),"y":abundance_map.values(),
+                                        "x":[grouping]*len(abundance_map),
+                                        })
+                grouping_dfs.append(new_gdf)
+
+            df = pd.concat(grouping_dfs)
+            lineages2drop = [l for l in lineages if df.loc[df["lineages"]==l, "y"].sum()==0]
+            df = df[~df['lineages'].isin(lineages2drop)]
+
         if return_df:
-            data["x"].extend(x)
-            data["y"].extend(other_counts)
-            data["lineages"].extend(["Other"]*len(x))
-            df = pd.DataFrame(data)
             return df
 
-        else:
-            fig.add_bar(
-                x=x,y=other_counts,name="Other",
-                text="Other",textposition="inside",
-                marker_color=self.colormap["Other"],
-                )
-            return fig
+        # create plot
+        non_other_lineages = [l for l in df["lineages"].unique() if l not in ('Other','below-threshold')]
+        lineage_list = non_other_lineages + ["Other"]
+        if threshold_strategy == 'superlineage':
+            lineage_list.append('below-threshold')
 
-    def plotLineagesSubplots(self, lineages, groupings, schemes, freyja_df, group_by_col, lineage_col, minimum, subplot_order=None):        
+        for lineage in lineage_list:
+            lindf = df[df["lineages"]==lineage]
+            # skip lineages that are all 0 (or below minimum)
+            if list(lindf["y"].unique()) == [0]:
+                # print("Skipping because all 0s for",lineage)
+                continue
+            lindf = lindf.sort_values("x")
+            fig.add_bar(
+                x=lindf["x"],y=lindf["y"],name=lineage,
+                text=lineage,textposition="inside",
+                marker_color=self.colormap.get(lineage),
+                )
+        self.update_colormap(fig)
+        return fig
+
+    def plotLineagesSubplots(self, lineages, groupings, schemes, freyja_df, group_by_col, lineage_col, minimum, subplot_order=None, threshold_strategy:Literal["other","superlineage"]="other"):        
         """Returns stacked bar charts showing lineage abundances for each grouping
         
         Args:
@@ -740,8 +813,15 @@ class FreyjaPlotter:
         * `minimum` (float): minimum abundance value to include in plot - anything less is categorized in "Other", defualts to 0.05
         * `summarized` (bool): whether to use summarized lineages rather than all lineages, defaults to False
         * `subplot_order` (str): list ordering each subplot, defaults to None"
+        * `return_df` (bool): if True, returns dataframe used for plot instead of plot
+        * `threshold_strategy` (str): where to place abundances for lineages below threshold. If "other" -> "Other" group; if "superlinege" -> added to abundance for superlineage.
         """
 
+        if threshold_strategy=="superlineage":
+            raise NotImplementedError("Not yet ready for threshold_strategy=='superlineage'")
+        if return_df:
+            raise NotImplementedError("Not yet ready to return a dataframe for this")
+        
         # subplot_order = [scheme.title() for scheme in schemes]
         if subplot_order != None:
             subplot_order = subplot_order
@@ -804,7 +884,7 @@ class FreyjaPlotter:
 
         return fig
 
-    def plotLineages(self,summarized=False,superlineage=None,minimum=0.05,fn=None,title=None,samples="all",include_pattern=None,exclude_pattern=None,start_date=None,end_date=None,super_method='dot-split',group_by:Literal["sample","date"]="sample",group_by_col:str=None,date_col=None,period=None,subplots=False, height=None, subplot_order=None,return_df=False):
+    def plotLineages(self,summarized=False,superlineage=None,minimum=0.05,fn=None,title=None,samples="all",include_pattern=None,exclude_pattern=None,start_date=None,end_date=None,super_method='dot-split',group_by:Literal["sample","date"]="sample",group_by_col:str=None,date_col=None,period=None,subplots=False, height=None, subplot_order=None,return_df=False,threshold_strategy:Literal["other","superlineage"]="other"):
         """Returns stacked bar chart showing lineage abundances for each sample
         
         Args:
@@ -822,6 +902,7 @@ class FreyjaPlotter:
         * `period` (str): if `group_by=="date"`, the time period to use for each grouping. Defaults to 'week'
         * `subplots` (bool): if True, stacks each scheme on a different plot with a shared x axis. Defaults to False.
         * `return_df` (bool): if True, returns dataframe used for plot instead of plot
+        * `threshold_strategy` (str): where to place abundances for lineages below threshold. If "other" -> "Other" group; if "superlinege" -> added to abundance for superlineage.
         """
 
         # filter  data and decide what to loop through
@@ -836,9 +917,9 @@ class FreyjaPlotter:
         # exit(1)
 
         if subplots:
-            fig = self.plotLineagesSubplots(lineages=lineages, groupings=groupings, schemes=schemes, freyja_df=freyja_df, group_by_col=group_by_col, lineage_col=lineage_col, minimum=minimum, subplot_order=subplot_order)
+            fig = self.plotLineagesSubplots(lineages=lineages, groupings=groupings, schemes=schemes, freyja_df=freyja_df, group_by_col=group_by_col, lineage_col=lineage_col, minimum=minimum, subplot_order=subplot_order, return_df=return_df, threshold_strategy=threshold_strategy)
         else:
-            fig = self.plotLineagesSinglePlot(lineages=lineages, groupings=groupings, schemes=schemes, freyja_df=freyja_df, group_by_col=group_by_col, lineage_col=lineage_col, minimum=minimum, return_df=return_df)
+            fig = self.plotLineagesSinglePlot(lineages=lineages, groupings=groupings, schemes=schemes, freyja_df=freyja_df, group_by_col=group_by_col, lineage_col=lineage_col, minimum=minimum, return_df=return_df, threshold_strategy=threshold_strategy)
         
         if return_df:
             return fig
@@ -1050,7 +1131,7 @@ class FreyjaPlotter:
             # font_family=["Inconsolata","Open Sans", "verdana", "arial", "sans-serif"],
         )
         # fig.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1]))
-        fig.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1].replace(": ","<br>")))
+        fig.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1].replace(": ","<br>").replace(" (","<br>(")))
         if fn: save(fig,fn)
         return fig
 

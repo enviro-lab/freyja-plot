@@ -5,6 +5,10 @@ Maybe incorporate aliases into superlineage/sublineage detection. See https://gi
 
 ## unversioned updates
 
+## v0.6.0
+### Added
+* can now bin low-abundance lineage into their superlineages in `FreyjaPlotter.plotLineages`
+
 ## v0.5.0
 ### Added
 * plots to summarize lineage detection when abundance values aren't relevent
