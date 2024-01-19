@@ -5,6 +5,10 @@ Maybe incorporate aliases into superlineage/sublineage detection. See https://gi
 
 ## unversioned updates
 
+## v0.6.1
+### Fixed
+* freyjaPlotter methods now correctly compare samples for which one group is missing samples of the same grouping (name/date)
+
 ## v0.6.0
 ### Added
 * can now bin low-abundance lineage into their superlineages in `FreyjaPlotter.plotLineages`

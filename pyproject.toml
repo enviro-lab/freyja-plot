@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "freyja-plot"
-version = "0.3.0"
+version = "0.6.1"
 description = "Plotting lineage abundance for individual samples from aggregated freyja demix results"
 authors = ["Sam Kunkleman <skunklem@uncc.edu>"]
 license = "MIT"
