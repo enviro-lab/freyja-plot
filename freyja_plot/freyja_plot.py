@@ -718,16 +718,6 @@ class FreyjaPlotter:
         * `threshold_strategy` (str): where to place abundances for lineages below threshold. If "other" -> "Other" group; if "superlinege" -> added to abundance for superlineage.
         """
 
-        # the below looks like [["sample1","sample2","sample1","sample2"],["scheme1","scheme1","scheme2","scheme2"]]
-        # name_scheme_array = [
-        #     [grouping for grouping in groupings for _ in range(self.num_schemes)],
-        #     [scheme for grouping in groupings for scheme in schemes]]
-        # if self.num_schemes > 1:
-        #     x = [f"{name_scheme_array[0][i]}-{name_scheme_array[1][i]}" for i in range(len(name_scheme_array[0]))]
-        # else: x = groupings
-        # add count each lineage abundance and add this as bars for each sample
-        # other_counts = [0] * len(groupings) * len(schemes)
-        # total_counts =  [0] * len(groupings) * len(schemes)
         data = {
             "x":[],"y":[],"lineages":[],
             }
@@ -757,55 +747,6 @@ class FreyjaPlotter:
                         data["lineages"].append(lineage)
                         non_other_counts[sample] = non_other_counts.get(sample, 0) + abundance
 
-            # for i,grouping in enumerate(name_scheme_array[0]):
-            #     scheme = name_scheme_array[1][i]
-            #     abundances_for_grouping_and_lineage = lineage_df.loc[(lineage_df[group_by_col]==grouping) & (lineage_df["scheme"]==scheme), "abundances"]
-            #     if len(abundances_for_grouping_and_lineage)>0:
-            #         abundance = abundances_for_grouping_and_lineage.sum()
-            #         if not isinstance(abundance, (np.floating, float)):
-            #             abundance = 0
-            #         # save "other"s to figure out later
-            #         if lineage.lower() == "other":
-            #             y.append(0)
-            #             # other_counts[i] += abundance
-            #         elif threshold_strategy == "other" and abundance < minimum:
-            #             y.append(0)
-            #         else:
-            #             y.append(abundance)
-            #             non_other_counts[i] += abundance
-            #         final_x.append(grouping)
-            #     # else:
-            #     #     y.append(None)
-
-            # if not set(y) == {0} and len(y) > 0:
-            #     # drop other bars that equal 1 (as they are usually a byproduct of the lineage/scheme looping above)
-            #     # none_y_indices = set([i for i,val in enumerate(y) if val!=None])
-            #     # final_x = [val for i,val in enumerate(x) if i in none_y_indices]
-            #     # final_y = [val for i,val in enumerate(y) if i in none_y_indices]
-
-            #     # print("y",y)
-            #     data["x"].extend(x)
-            #     data["y"].extend(y)
-            #     data["lineages"].extend([lineage]*len(x))
-            #     # data["groupings"].extend(name_scheme_array[0])
-        
-        # calc other counts from totals:
-        # other_counts = [1-c for c in non_other_counts]
-
-        # # drop other bars that equal 1 (as they are usually a byproduct of the lineage/scheme looping above)
-        # partial_others = set([i for i,val in enumerate(other_counts) if val!=None])
-        # final_x = [val for i,val in enumerate(x) if i in partial_others]
-        # # other_counts = [val for i,val in enumerate(other_counts) if i in partial_others]
-
-        # data["x"].extend(x)
-        # data["y"].extend(other_counts)
-        # data["lineages"].extend(["Other"]*len(x))
-
-        # for sample, count in other_counts.items():
-        #     data["x"].append(sample)
-        #     data["y"].append(count)
-        #     data["lineages"].append("Other")
-
         for sample, count in non_other_counts.items():
             data["x"].append(sample)
             data["y"].append(1-count)
@@ -827,7 +768,7 @@ class FreyjaPlotter:
                         elif abundance == 0:
                             continue
                         elif abundance < minimum:
-                            superlineage = getNearestSuperLineage(lineage)
+                            superlineage = self.getNearestSuperLineage(lineage)
                             if superlineage == lineage:
                                 superlineage = "below-threshold"
                             if not abundance_map.get(superlineage):
