@@ -5,6 +5,10 @@ Maybe incorporate aliases into superlineage/sublineage detection. See https://gi
 
 ## unversioned updates
 
+## unreleased v0.7.0
+### Added
+* `return_df` functionality for plotLineageDetections
+
 ## v0.6.2
 ### Fixed
 * cleanup from previous update

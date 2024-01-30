@@ -273,7 +273,7 @@ def lowest_non_zero(abundance_map):
     """Returns value of lowest-abundance sample that is not in the other or below-threshold categories
     
     Args:
-        * `abundance_map` (dict): key=lineage_name, value=abundance
+        * `abundance_map` (dict): key=lineage_name, value=abundance; if empty, returns 1
     """
 
     abundances = set()
@@ -284,7 +284,7 @@ def lowest_non_zero(abundance_map):
             continue
         else:
             abundances.add(v)
-    return min(abundances)
+    return min(abundances,default=1)
 
 class FreyjaPlotter:
     """A FreyjaPlotter object
@@ -922,6 +922,11 @@ class FreyjaPlotter:
         * `subplots` (bool): if True, stacks each scheme on a different plot with a shared x axis. Defaults to False.
         * `return_df` (bool): if True, returns dataframe used for plot instead of plot
         * `threshold_strategy` (str): where to place abundances for lineages below threshold. If "other" -> "Other" group; if "superlinege" -> added to abundance for superlineage.
+
+        Known issue:
+        If a bar is 100% "Other", it will not appear in the plot. This is because we currently 
+        assume samples with no abundance values assigned by freyja are not real when trying to 
+        pair up corresponding samples.
         """
 
         # filter  data and decide what to loop through
@@ -1050,7 +1055,7 @@ class FreyjaPlotter:
         if fn: save(fig,fn)
         return fig
     
-    def plotLineageDetections(self,show_counts=True,summarized=True,fn=None,color="scheme",x=None,title="Detection of expected lineages",include_unexpected_lineages=False,samples="all",include_pattern=None,exclude_pattern=None,start_date=None,end_date=None,minimum_abundance=0.0,schemes=[],lineages=[],combine_lineages=False,height=None):
+    def plotLineageDetections(self,show_counts=True,summarized=True,fn=None,color="scheme",x=None,title="Detection of expected lineages",include_unexpected_lineages=False,samples="all",include_pattern=None,exclude_pattern=None,start_date=None,end_date=None,minimum_abundance=0.0,schemes=[],lineages=[],combine_lineages=False,height=None,return_df=False):
 
         # prep data
         freyja_df = self.getPlottingDf(summarized=summarized,samples=samples,include_pattern=include_pattern,exclude_pattern=exclude_pattern,start_date=start_date,end_date=end_date,minimum=0.0)
@@ -1109,7 +1114,8 @@ class FreyjaPlotter:
         df = pd.DataFrame(data)
         # df = df.sort_values(by="Sample name")
         # print(df)
-        # return
+        if return_df:
+            return df
 
         # plot
         if show_counts:
