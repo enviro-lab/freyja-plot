@@ -8,6 +8,11 @@ Maybe incorporate aliases into superlineage/sublineage detection. See https://gi
 ## unreleased v0.7.0
 ### Added
 * `return_df` functionality for plotLineageDetections
+* can now choose which column to sort by for plots (x-axis) (partially implemented)
+### Fixed
+* missing bars in lineage plots are back for samples that should have them
+* updated docstrings
+* neater formatting
 
 ## v0.6.2
 ### Fixed
