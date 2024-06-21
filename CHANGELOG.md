@@ -5,7 +5,15 @@ Maybe incorporate aliases into superlineage/sublineage detection. See https://gi
 
 ## unversioned updates
 
-## unreleased v0.7.0
+## v0.8.0
+### Added
+* Can now adjust order of lineage appearance in legend/bar stacks in plotLineages with `ordered_lineages`
+* Can now select which `schemes` to use in plotLineages
+### Fixed
+* `sort_by` is now more clear and more consistent in its defaults
+* various clarifications/typo corrections
+
+## v0.7.0
 ### Added
 * `return_df` functionality for plotLineageDetections
 * can now choose which column to sort by for plots (x-axis) (partially implemented)

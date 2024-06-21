@@ -599,11 +599,11 @@ class FreyjaPlotter:
         * `start_date` (str): First date of samples to include. Defaults to None.
         * `end_date` (str): First date of samples to include. Defaults to None.
         * `super_method` (str): method to use for determining superlineage. Defaults to 'dot-split'
-        * `sort_by` (str): field to sort bars by (still undergoing development)
+        * `sort_by` (str): field used to sort bar placement. Defaults to 'abundances'. 
         """
 
         if not self.date_col:
-            raise AttributeError("`date_col` required to plot time series data")
+            raise AttributeError(f"`date_col` required in {self.__class__.__name__}{".freyja_df" if not summarized else ".summarized_freyja_df"} to plot time series data. See {self.__class__.__name__}.addDates() to add that info.")
         freyja_df = self.getPlottingDf(summarized=summarized,superlineage=superlineage,samples=samples,include_pattern=include_pattern,exclude_pattern=exclude_pattern,start_date=start_date,end_date=end_date,minimum=minimum)
         lineage_col = getLineageCol(superlineage=superlineage,summarized=summarized,super_method=super_method)
         lineage_list = self.listLineages(superlineage=superlineage,summarized=summarized,df=freyja_df,num_lineages=num_lineages,filter=False,super_method=super_method)
@@ -714,7 +714,7 @@ class FreyjaPlotter:
         # else:
         #     print(f"can't find superlineage {superlineage} for lineage {lineage}")
 
-    def plotLineagesSinglePlot(self, lineages, schemes, freyja_df, group_by_col, lineage_col, minimum, return_df=False, threshold_strategy:Literal["other","superlineage"]="other", sort_by="lineages", y_title="Abundance", x_title="Samples"):
+    def plotLineagesSinglePlot(self, lineages, schemes, freyja_df, group_by_col, lineage_col, minimum, return_df=False, threshold_strategy:Literal["other","superlineage"]="other", sort_by="lineages", y_title="Abundance", x_title="Samples", ordered_lineages=None):
         """Returns stacked bar chart showing lineage abundances for each sample
         
         Args:
@@ -726,9 +726,10 @@ class FreyjaPlotter:
         * `minimum` (float): minimum abundance value to include in plot - anything less is categorized in "Other", defualts to 0.05
         * `return_df` (bool): a flag to return DataFrame insead of fig
         * `threshold_strategy` (str): where to place abundances for lineages below threshold. If "other" -> "Other" group; if "superlinege" -> added to abundance for superlineage.
-        * `sort_by` (str): field to sort bars by (still undergoing development)
+        * `sort_by` (str): field used to sort dataframe and bars. Defaults to 'lineages' which attempts to order by lineage name. Use 'x' to sort by sample name. Use 'y' to sort by abundance.
         * `y_title` (str): title for y-axis
         * `x_title` (str): title for x-axis
+        * `ordered_lineages` (list): list of lineages for ordering legend and bar stacks. Defaults to None which includes all lineages, unordered.
         """
 
         data = {
@@ -737,9 +738,6 @@ class FreyjaPlotter:
         if not return_df:
             fig = go.Figure()
 
-        # print(freyja_df)
-        # exit()
-
         non_other_counts = {}
         other_counts = {}
         for lineage in lineages:
@@ -747,7 +745,7 @@ class FreyjaPlotter:
             for scheme in schemes:
                 scheme_df = lineage_df[lineage_df["scheme"]==scheme]
                 for grouping in scheme_df[group_by_col].unique():
-                    sample = f"{grouping}-{scheme}" if self.num_schemes > 1 else grouping
+                    sample = f"{grouping}-{scheme}" if len(schemes) > 1 else grouping
                     abundance = scheme_df.loc[scheme_df[group_by_col]==grouping, "abundances"].sum()
                     if not isinstance(abundance, (np.floating, float)):
                         raise(f"weird abundance for {sample}: {abundance}")
@@ -807,6 +805,9 @@ class FreyjaPlotter:
 
         # create plot
         non_other_lineages = [lin for lin in df["lineages"].unique() if lin not in ('Other','below-threshold')]
+        if ordered_lineages is not None:
+            non_other_lineages = set(non_other_lineages)
+            non_other_lineages = [l for l in ordered_lineages if l in non_other_lineages]
         lineage_list = non_other_lineages + ["Other"]
         if threshold_strategy == 'superlineage':
             lineage_list.append('below-threshold')
@@ -828,7 +829,7 @@ class FreyjaPlotter:
             fig.update_layout(yaxis_title=y_title,xaxis_title=x_title)
         return fig
 
-    def plotLineagesSubplots(self, lineages, schemes, freyja_df, group_by_col, lineage_col, minimum, subplot_order=None, return_df=False, threshold_strategy:Literal["other","superlineage"]="other", sort_by="abundances", y_title="Abundance",x_title="Samples"):
+    def plotLineagesSubplots(self, lineages, schemes, freyja_df, group_by_col, lineage_col, minimum, subplot_order=None, return_df=False, threshold_strategy:Literal["other","superlineage"]="other", sort_by="lineages", y_title="Abundance",x_title="Samples", ordered_lineages=None):
         """Returns stacked bar charts showing lineage abundances for each grouping
         
         Args:
@@ -841,9 +842,10 @@ class FreyjaPlotter:
         * `subplot_order` (str): list ordering each subplot, defaults to None"
         * `return_df` (bool): if True, returns dataframe used for plot instead of plot
         * `threshold_strategy` (str): where to place abundances for lineages below threshold. If "other" -> "Other" group; if "superlinege" -> added to abundance for superlineage.
-        * `sort_by` (str): field to sort bars by (still undergoing development)
+        * `sort_by` (str): field used to sort dataframe and bars. Defaults to 'lineages' which attempts to order by lineage name. With subplots, this prioritizes the top subplot. Use 'x' to sort by sample name. Use 'y' to sort by abundance.
         * `y_title` (str): master y-axis title
         * `x_title` (str): master x-axis title
+        * `ordered_lineages` (list): list of lineages for ordering legend and bar stacks. Defaults to None which includes all lineages, unordered.
         """
 
         if threshold_strategy=="superlineage":
@@ -860,7 +862,7 @@ class FreyjaPlotter:
 
             # subplot_order = [scheme for scheme in subplot_order]
         if not return_df:
-            fig = make_subplots(rows=self.num_schemes, cols=1, shared_xaxes=True ,subplot_titles=subplot_order, y_title=y_title, x_title=x_title)
+            fig = make_subplots(rows=len(schemes), cols=1, shared_xaxes=True ,subplot_titles=subplot_order, y_title=y_title, x_title=x_title)
 
         # loop through lineages/schemes/groupings to build abundance-based df
         data = {"x":[],"y":[],"lineages":[],"scheme":[],}
@@ -898,7 +900,10 @@ class FreyjaPlotter:
         if return_df:
             return df
 
-        lineages = [x for x in lineages if x!="Other"] + ["Other"]
+        if ordered_lineages is not None:
+            lineages = ordered_lineages
+        else:
+            lineages = [x for x in lineages if x!="Other"] + ["Other"]
 
         # loop through scheme/lineage details to create plots
         for i, scheme in enumerate(subplot_order):
@@ -910,6 +915,12 @@ class FreyjaPlotter:
                 lin_df = scheme_df[scheme_df["lineages"]==lineage]
                 if not lin_df.empty:
                     fig.add_bar(x=lin_df["x"],y=lin_df["y"],name=lineage,
+                                text=lineage,textposition="inside",
+                                marker_color=self.colormap.get(lineage),
+                                row=row, col=1,
+                                )
+                else:
+                    fig.add_bar(x=[],y=[],name=lineage,
                                 text=lineage,textposition="inside",
                                 marker_color=self.colormap.get(lineage),
                                 row=row, col=1,
@@ -933,7 +944,7 @@ class FreyjaPlotter:
 
         return fig
 
-    def plotLineages(self,summarized=False,superlineage=None,minimum=0.05,fn=None,title=None,samples="all",include_pattern=None,exclude_pattern=None,start_date=None,end_date=None,super_method='dot-split',group_by:Literal["sample","date"]="sample",group_by_col:str=None,date_col=None,period='week',subplots=False, height=None, subplot_order=None,return_df=False,threshold_strategy:Literal["other","superlineage"]="other",sort_by="lineages",y_title="Abundance",x_title="Samples"):
+    def plotLineages(self,summarized=False,superlineage=None,minimum=0.05,fn=None,title=None,samples="all",include_pattern=None,exclude_pattern=None,start_date=None,end_date=None,super_method='dot-split',group_by:Literal["sample","date"]="sample",group_by_col:str=None,date_col=None,period='week',subplots=False, height=None, subplot_order=None,return_df=False,threshold_strategy:Literal["other","superlineage"]="other",sort_by="lineages",y_title="Abundance",x_title="Samples",ordered_lineages=None,schemes=None):
         """Returns stacked bar chart showing lineage abundances for each sample
         
         Args:
@@ -952,11 +963,13 @@ class FreyjaPlotter:
         * `subplots` (bool): if True, stacks each scheme on a different plot with a shared x axis. Defaults to False.
         * `return_df` (bool): if True, returns dataframe used for plot instead of plot
         * `threshold_strategy` (str): where to place abundances for lineages below threshold. If "other" -> "Other" group; if "superlinege" -> added to abundance for superlineage.
-        * `sort_by` (str): field to sort bars by (still undergoing development)
+        * `sort_by` (str): field used to sort dataframe and bars. Defaults to 'lineages' which attempts to order by lineage name. With subplots, this prioritizes the top subplot. Use 'x' to sort by sample name. Use 'y' to sort by abundance.
         * `y_title` (str): master y axis title, defaults to "Abundance"
+        * `ordered_lineages` (list): list of lineages for ordering legend and bar stacks. Defaults to None which includes all lineages, unordered.
+        * `schemes` (list): list of schemes to include in plot. Used for naming/selected schemes and number of subplots if applicable. Defaults to all.
 
         Known issue:
-        If a bar is 100% "Other", it will not appear in the plot. This is because we currently 
+        If a bar is 100% "Other", it may not appear in the plot. This is because we currently 
         assume samples with no abundance values assigned by freyja are not real when trying to 
         pair up corresponding samples.
         """
@@ -965,16 +978,18 @@ class FreyjaPlotter:
         freyja_df = self.getPlottingDf(summarized=summarized,superlineage=superlineage,samples=samples,include_pattern=include_pattern,exclude_pattern=exclude_pattern,start_date=start_date,end_date=end_date,minimum=0.0,super_method=super_method)
         lineage_col = getLineageCol(superlineage=superlineage,summarized=summarized,super_method=super_method)
         group_by_col,date_col,freyja_df = self.checkGroupByDetails(group_by=group_by,date_col=date_col,period=period,freyja_df=freyja_df,split_by_scheme=subplots)
-        schemes = freyja_df["scheme"].unique().tolist()
+        schemes = freyja_df["scheme"].unique().tolist() if isinstance(schemes, type(None)) else schemes
         lineages = freyja_df.sort_values(by="abundances")[lineage_col].unique().tolist()[::-1]
         # print(freyja_df)
         # print(groupings,schemes,lineages)
         # exit(1)
 
         if subplots:
-            fig = self.plotLineagesSubplots(lineages=lineages, schemes=schemes, freyja_df=freyja_df, group_by_col=group_by_col, lineage_col=lineage_col, minimum=minimum, subplot_order=subplot_order, return_df=return_df, threshold_strategy=threshold_strategy, sort_by=sort_by, y_title=y_title, x_title=x_title)
+            fig = self.plotLineagesSubplots(lineages=lineages, schemes=schemes, freyja_df=freyja_df, group_by_col=group_by_col, lineage_col=lineage_col, minimum=minimum, subplot_order=subplot_order, return_df=return_df, threshold_strategy=threshold_strategy, sort_by=sort_by, y_title=y_title, x_title=x_title, ordered_lineages=ordered_lineages)
+            if not height:
+                height = len(schemes) * 250
         else:
-            fig = self.plotLineagesSinglePlot(lineages=lineages, schemes=schemes, freyja_df=freyja_df, group_by_col=group_by_col, lineage_col=lineage_col, minimum=minimum, return_df=return_df, threshold_strategy=threshold_strategy, sort_by=sort_by, y_title=y_title, x_title=x_title)
+            fig = self.plotLineagesSinglePlot(lineages=lineages, schemes=schemes, freyja_df=freyja_df, group_by_col=group_by_col, lineage_col=lineage_col, minimum=minimum, return_df=return_df, threshold_strategy=threshold_strategy, sort_by=sort_by, y_title=y_title, x_title=x_title, ordered_lineages=ordered_lineages)
         
         if return_df:
             return fig
@@ -982,17 +997,11 @@ class FreyjaPlotter:
         if not title:
             title = "Freyja lineage abundance" if not summarized else "Freyja lineage abundance - summary"
 
-        if not height and subplots:
-            height = len(schemes) * 250
         fig.update_layout(
             barmode="stack",
             title=title,
             height=height,
-            # xaxis_title="Mixtures",
-            # yaxis_title="Proportion",
-            # legend_title="Lineage",
             )
-        # self.update_colormap(fig) # doesn't work
 
         if sort_by:
             pass
@@ -1239,17 +1248,6 @@ class FreyjaPlotter:
 
 ### Additional helper functions
 
-# These are taken and adapted from Freyja so we can summarize lineages consistently
-def getExpectedAbundance(s,df):
-    if s["scheme"] == "Expected":
-        return s["abundances"]
-    else:
-        x = df.loc[(df["Sample name"]==s["Sample name"]) & (df["lineages"]==s["lineages"]) & (df["scheme"]=="Expected"), "abundances"].squeeze()
-        if type(x) == pd.Series and x.empty:
-            return 0.0
-        else:
-            return x
-
 def add_missing_lineages(compare_df,expected_lineages):
     """For each sample name, add zero-abundance lineages for any that it lacks"""
     yield compare_df
@@ -1260,6 +1258,17 @@ def add_missing_lineages(compare_df,expected_lineages):
             for lineage in set(expected_lineages) - set(sample_df["lineages"].unique()) - set(["None"]):
                 expected_abundance = compare_df.loc[(compare_df["scheme"]=="Expected") & (compare_df["scheme"]=="Expected") & (compare_df["lineages"]==lineage), "abundances"].sum()
                 yield pd.DataFrame({"Sample name":[sample], "lineages":[lineage], "abundances":[0], "scheme":[scheme], "expected_abundance":[expected_abundance]})
+
+# These are taken and adapted from Freyja so we can summarize lineages consistently
+def getExpectedAbundance(s,df):
+    if s["scheme"] == "Expected":
+        return s["abundances"]
+    else:
+        x = df.loc[(df["Sample name"]==s["Sample name"]) & (df["lineages"]==s["lineages"]) & (df["scheme"]=="Expected"), "abundances"].squeeze()
+        if type(x) == pd.Series and x.empty:
+            return 0.0
+        else:
+            return x
 
 def summarize_lineages(lineage_list, abundance_list):
     """Yields lineages and abundances summarized to WHO names and other larger grouplings"""
@@ -1278,7 +1287,7 @@ def get_lineage_summary(lineage_list, abundance_list):
 
     return "[" + ", ".join(summarize_lineages(lineage_list, abundance_list)) + "]"
 
-def map_to_constellation(sample_strains, vals, mapDict):
+def map_to_constellation(sample_strains, vals, mapDict, prefix_groups=["NFW","Neg","Control"]):
     """Maps lineage names to constellations
     NOTE: edited from freyja.sample_deconvolv"""
     localDict = {}
@@ -1295,17 +1304,21 @@ def map_to_constellation(sample_strains, vals, mapDict):
                 localDict['A'] = vals[jj]
             else:
                 localDict['A'] += vals[jj]
-        elif lin.startswith('NFW'):
-            if 'NFW' not in localDict.keys():
-                localDict['NFW'] = vals[jj]
-            else:
-                localDict['NFW'] += vals[jj]
         else:
-            # print("Other:", lin, vals[jj])
-            if 'Other' not in localDict.keys():
-                localDict['Other'] = vals[jj]
+            # group together anything with specified prefixes. Good for grouping controls
+            for prefix in prefix_groups:
+                if lin.startswith(prefix):
+                    if prefix not in localDict.keys():
+                        localDict[prefix] = vals[jj]
+                    else:
+                        localDict[prefix] += vals[jj]
+                    break
             else:
-                localDict['Other'] += vals[jj]
+                # print("Other:", lin, vals[jj])
+                if 'Other' not in localDict.keys():
+                    localDict['Other'] = vals[jj]
+                else:
+                    localDict['Other'] += vals[jj]
     # convert to descending order
     localDict = sorted(localDict.items(), key=lambda x: x[1], reverse=True)
     return localDict
