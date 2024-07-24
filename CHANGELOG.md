@@ -5,6 +5,10 @@ Maybe incorporate aliases into superlineage/sublineage detection. See https://gi
 
 ## unversioned updates
 
+## v0.8.1
+### Fixed
+* `mapDict` works with all freyja versions
+
 ## v0.8.0
 ### Added
 * Can now adjust order of lineage appearance in legend/bar stacks in plotLineages with `ordered_lineages`
