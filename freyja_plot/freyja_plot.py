@@ -402,7 +402,11 @@ class FreyjaPlotter:
     def updateSummaryDict(self):
         """Uses freyja summary dict as base and adds in user-supplied `summary_dict` entries"""
 
-        mapDict = buildLineageMap("")
+        try:
+            mapDict = buildLineageMap("")
+        except FileNotFoundError:
+            # older freyja version used this instead
+            mapDict = buildLineageMap("-1")
         if "Other" not in mapDict.keys():
             mapDict["Other"] = "Other"
         mapDict = _updateSummaryDict(main_dict=mapDict, adjustments=self.summary_dict)
@@ -603,7 +607,7 @@ class FreyjaPlotter:
         """
 
         if not self.date_col:
-            raise AttributeError(f"`date_col` required in {self.__class__.__name__}{".freyja_df" if not summarized else ".summarized_freyja_df"} to plot time series data. See {self.__class__.__name__}.addDates() to add that info.")
+            raise AttributeError(f"`date_col` required in {self.__class__.__name__}{'.freyja_df' if not summarized else '.summarized_freyja_df'} to plot time series data. See {self.__class__.__name__}.addDates() to add that info.")
         freyja_df = self.getPlottingDf(summarized=summarized,superlineage=superlineage,samples=samples,include_pattern=include_pattern,exclude_pattern=exclude_pattern,start_date=start_date,end_date=end_date,minimum=minimum)
         lineage_col = getLineageCol(superlineage=superlineage,summarized=summarized,super_method=super_method)
         lineage_list = self.listLineages(superlineage=superlineage,summarized=summarized,df=freyja_df,num_lineages=num_lineages,filter=False,super_method=super_method)

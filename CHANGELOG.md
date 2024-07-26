@@ -5,6 +5,10 @@ Maybe incorporate aliases into superlineage/sublineage detection. See https://gi
 
 ## unversioned updates
 
+## v0.8.2
+### Fixed
+* previous fix actually added to commit this time
+
 ## v0.8.1
 ### Fixed
 * `mapDict` works with all freyja versions
