@@ -5,6 +5,13 @@ Maybe incorporate aliases into superlineage/sublineage detection. See https://gi
 
 ## unversioned updates
 
+## v0.8.3
+### Fixed
+* `threshold_strategy="superlineage"` now works for plotLineages
+* bars that end up as 100% other aren't dropped for plotLineages with subplots
+* general decluttering
+* docstrings updated/fixed
+
 ## v0.8.2
 ### Fixed
 * previous fix actually added to commit this time
